@@ -1,123 +1,215 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
-from scipy.sparse.linalg import eigsh
-import time
+from typing import List, Optional, Sequence, Tuple
+
 import numpy as np
+from scipy.sparse.linalg import eigsh
+
+import time
 
 
-def ZipperLeft(Tl: np.ndarray, Mb: np.ndarray, O: np.ndarray, Mt: np.ndarray) -> np.ndarray:
-    Taux = np.einsum('ijk,klm', Mb, Tl,optimize=True)
-    Taux = np.einsum('ijkl,kjmn', Taux, O,optimize=True)
-    Tf = np.einsum('ijkl,jlm', Taux, Mt,optimize=True)
-    return Tf
-
-def ZipperRight(Tr: np.ndarray, Mb: np.ndarray, O: np.ndarray, Mt: np.ndarray) -> np.ndarray:
-    Taux = np.einsum('ijk,klm', Mt, Tr,optimize=True)
-    Taux = np.einsum('ijkl,mnkj', Taux, O,optimize=True)
-    Tf = np.einsum('ijkl,jlm', Taux, Mb,optimize=True)
-    return Tf
-
-def LeftC(M: list) -> list:
-
-    N = len(M)  # numero de sitios
-
-    for l in range(N):
-        Taux = M[l]
-        Taux = np.reshape(Taux, (np.shape(Taux)[0] * np.shape(Taux)[1], np.shape(Taux)[2]))
-        U, S, Vdag = np.linalg.svd(Taux, full_matrices=False)
-        M[l] = np.reshape(U, (np.shape(M[l])[0], np.shape(M[l])[1], np.shape(U)[1]))
-        SVdag = np.matmul(np.diag(S), Vdag)
-        if l < N - 1:
-            M[l + 1] = np.einsum('ij,jkl', SVdag, M[l + 1],optimize=True)
-    return M
-
-def RightC(M: list) -> list:
-
-    N = len(M)  # numero de sitios
-
-    for l in range(N - 1, -1, -1):
-        Taux = M[l]
-        Taux = np.reshape(Taux, (np.shape(Taux)[0], np.shape(Taux)[1] * np.shape(Taux)[2]))
-        U, S, Vdag = np.linalg.svd(Taux, full_matrices=False)
-        M[l] = np.reshape(Vdag, (np.shape(Vdag)[0], np.shape(M[l])[1], np.shape(M[l])[2]))
-        US = np.matmul(U, np.diag(S))
-        if l > 0:
-            M[l - 1] = np.einsum('ijk,kl', M[l - 1], US,optimize=True)
-    return M
-
-def fDMRG_conv_mem(H: list, D: int, Nsweeps: int, mps : list=None,epsilon: float = 1e-1 ) -> tuple:
-    N = len(H)  # numero de sitios
-    if mps == None:
-        M = [np.random.rand(1, np.shape(H[0])[3], D)]
-        for l in range(1, N - 1):
-            M.append(np.random.rand(D, np.shape(H[l])[3], D))
-        M.append(np.random.rand(D, np.shape(H[N - 1])[3], 1))
-    else:
-        M = mps
-    inicio = time.time()
-    M = LeftC(M)
-    M = RightC(M)
-
-    Hzip = [None] * (N + 2)
-    one = np.ones((1,1,1))
-    Hzip[0] = one
-    Hzip[-1] = one
-    
-    for l in range(N-1, -1, -1):
-        Hzip[l+1] = ZipperRight(Hzip[l+2], M[l].conj().T, H[l], M[l])
-
-    E_time = []
-    E_list = []
-    
-    for itsweeps in range(Nsweeps):
-
-        # Bucle hacia adelante
-        for l in range(N):
-            Taux = np.einsum('ijk,jlmn', Hzip[l], H[l], optimize=True)
-            Taux = np.einsum('ijklm,nlo', Taux, Hzip[l + 2], optimize=True)
-            Taux = np.transpose(Taux, (0, 2, 5, 1, 3, 4))
-            Hmat = np.reshape(Taux, (np.shape(Taux)[0] * np.shape(Taux)[1] * np.shape(Taux)[2],
-                                     np.shape(Taux)[3] * np.shape(Taux)[4] * np.shape(Taux)[5]))
-
-            val, vec = eigsh(Hmat, k=1, which='SA', v0=M[l])
-
-            E_list.append(val[0])
-            E_time.append((time.time() - inicio, val[0]))#AQUI ALMACENO TIEMPO,ENEGIA
-
-            # Actualizacion de MPS
-            Taux2 = np.reshape(vec, (np.shape(Taux)[0] * np.shape(Taux)[1], np.shape(Taux)[2]))
-            U, S, Vdag = np.linalg.svd(Taux2, full_matrices=False)
-            M[l] = np.reshape(U, (np.shape(Taux)[0], np.shape(Taux)[1], np.shape(U)[1]))
-            if l < N - 1:
-                M[l + 1] = np.einsum('ij,jkl', np.matmul(np.diag(S), Vdag), M[l + 1])
-
-            Hzip[l + 1] = ZipperLeft(Hzip[l], M[l].conj().T, H[l], M[l])
-
-        # Bucle hacia atras
-        #inicio = time.time()
-        for l in range(N - 1, -1, -1):
-            Taux = np.einsum('ijk,jlmn', Hzip[l], H[l], optimize=True)
-            Taux = np.einsum('ijklm,nlo', Taux, Hzip[l + 2], optimize=True)
-            Taux = np.transpose(Taux, (0, 2, 5, 1, 3, 4))
-            Hmat = np.reshape(Taux, (np.shape(Taux)[0] * np.shape(Taux)[1] * np.shape(Taux)[2],
-                                     np.shape(Taux)[3] * np.shape(Taux)[4] * np.shape(Taux)[5]))
-
-            val, vec = eigsh(Hmat, k=1, which='SA', v0=M[l])
-
-            Taux2 = np.reshape(vec, (np.shape(Taux)[0], np.shape(Taux)[1] * np.shape(Taux)[2]))
-            U, S, Vdag = np.linalg.svd(Taux2, full_matrices=False)
-            M[l] = np.reshape(Vdag, (np.shape(Vdag)[0], np.shape(Taux)[1], np.shape(Taux)[2]))
-            if l > 0:
-                M[l - 1] = np.einsum('ijk,kl', M[l - 1], np.matmul(U, np.diag(S)), optimize=True)
-
-            Hzip[l + 1] = ZipperRight(Hzip[l + 2], M[l].conj().T, H[l], M[l])
-
-            E_list.append(val[0])
-            E_time.append((time.time() - inicio, val[0]))#AQUI ALMACENO TIEMPO,ENEGIA
+Tensor = np.ndarray
 
 
-    return E_list, M,E_time
+def _svd_reshape(
+    tensor: Tensor,
+    left_shape: Sequence[int],
+    right_shape: Sequence[int],
+) -> Tuple[Tensor, Tensor, Tensor]:
+    """Perform an SVD while respecting the original tensor shapes.
+
+    The helper keeps all reshape operations in a single place, making the
+    dimensional juggling in the algorithm easier to read and review.
+    """
+
+    reshaped = tensor.reshape(np.prod(left_shape), np.prod(right_shape))
+    u, s, v_dag = np.linalg.svd(reshaped, full_matrices=False)
+    return u, s, v_dag
+
+
+def ZipperLeft(Tl: Tensor, Mb: Tensor, O: Tensor, Mt: Tensor) -> Tensor:
+    """Contract the environment from the left."""
+
+    temp = np.einsum("ijk,klm", Mb, Tl, optimize=True)
+    temp = np.einsum("ijkl,kjmn", temp, O, optimize=True)
+    return np.einsum("ijkl,jlm", temp, Mt, optimize=True)
+
+
+def ZipperRight(Tr: Tensor, Mb: Tensor, O: Tensor, Mt: Tensor) -> Tensor:
+    """Contract the environment from the right."""
+
+    temp = np.einsum("ijk,klm", Mt, Tr, optimize=True)
+    temp = np.einsum("ijkl,mnkj", temp, O, optimize=True)
+    return np.einsum("ijkl,jlm", temp, Mb, optimize=True)
+
+
+def LeftC(mps: List[Tensor]) -> List[Tensor]:
+    """Left-canonicalise the MPS tensors."""
+
+    num_sites = len(mps)
+
+    for site in range(num_sites):
+        u, s, v_dag = _svd_reshape(
+            mps[site],
+            left_shape=(np.shape(mps[site])[0], np.shape(mps[site])[1]),
+            right_shape=(np.shape(mps[site])[2],),
+        )
+        mps[site] = u.reshape(
+            np.shape(mps[site])[0],
+            np.shape(mps[site])[1],
+            np.shape(u)[1],
+        )
+        sv_dag = np.matmul(np.diag(s), v_dag)
+        if site < num_sites - 1:
+            mps[site + 1] = np.einsum("ij,jkl", sv_dag, mps[site + 1], optimize=True)
+    return mps
+
+
+def RightC(mps: List[Tensor]) -> List[Tensor]:
+    """Right-canonicalise the MPS tensors."""
+
+    num_sites = len(mps)
+
+    for site in range(num_sites - 1, -1, -1):
+        u, s, v_dag = _svd_reshape(
+            mps[site],
+            left_shape=(np.shape(mps[site])[0],),
+            right_shape=(np.shape(mps[site])[1], np.shape(mps[site])[2]),
+        )
+        mps[site] = v_dag.reshape(
+            np.shape(v_dag)[0],
+            np.shape(mps[site])[1],
+            np.shape(mps[site])[2],
+        )
+        us = np.matmul(u, np.diag(s))
+        if site > 0:
+            mps[site - 1] = np.einsum("ijk,kl", mps[site - 1], us, optimize=True)
+    return mps
+
+
+def _initial_mps(num_sites: int, mpo: Sequence[Tensor], bond_dim: int) -> List[Tensor]:
+    """Create a random initial MPS with the desired bond dimension."""
+
+    mps: List[Tensor] = [np.random.rand(1, np.shape(mpo[0])[3], bond_dim)]
+    for site in range(1, num_sites - 1):
+        mps.append(np.random.rand(bond_dim, np.shape(mpo[site])[3], bond_dim))
+    mps.append(np.random.rand(bond_dim, np.shape(mpo[num_sites - 1])[3], 1))
+    return mps
+
+
+def fDMRG_conv_mem(
+    H: Sequence[Tensor],
+    D: int,
+    Nsweeps: int,
+    mps: Optional[List[Tensor]] = None,
+    epsilon: float = 1e-1,
+) -> Tuple[List[float], List[Tensor], List[Tuple[float, float]]]:
+    """Run the one-site finite DMRG algorithm.
+
+    Returns the full energy history, the optimised MPS tensors and the
+    (time, energy) pairs collected along the optimisation.
+    """
+
+    num_sites = len(H)
+    tensors = list(mps) if mps is not None else _initial_mps(num_sites, H, D)
+    start_time = time.time()
+    tensors = RightC(LeftC(tensors))
+
+    env = [None] * (num_sites + 2)
+    env[0] = np.ones((1, 1, 1))
+    env[-1] = np.ones((1, 1, 1))
+    for site in range(num_sites - 1, -1, -1):
+        env[site + 1] = ZipperRight(env[site + 2], tensors[site].conj().T, H[site], tensors[site])
+
+    time_energy: List[Tuple[float, float]] = []
+    energy_history: List[float] = []
+
+    def _store_energy(energy: float) -> None:
+        energy_history.append(energy)
+        time_energy.append((time.time() - start_time, energy))
+
+    def _converged() -> bool:
+        return len(energy_history) > 1 and abs(energy_history[-1] - energy_history[-2]) < epsilon
+
+    for _ in range(Nsweeps):
+        # Forward sweep
+        for site in range(num_sites):
+            contracted = np.einsum("ijk,jlmn", env[site], H[site], optimize=True)
+            contracted = np.einsum("ijklm,nlo", contracted, env[site + 2], optimize=True)
+            contracted = np.transpose(contracted, (0, 2, 5, 1, 3, 4))
+            hmat = contracted.reshape(
+                np.shape(contracted)[0] * np.shape(contracted)[1] * np.shape(contracted)[2],
+                np.shape(contracted)[3] * np.shape(contracted)[4] * np.shape(contracted)[5],
+            )
+
+            vals, vecs = eigsh(hmat, k=1, which="SA", v0=tensors[site])
+            energy = float(vals[0])
+            _store_energy(energy)
+            if _converged():
+                break
+
+            reshaped_vec = vecs.reshape(
+                np.shape(contracted)[0] * np.shape(contracted)[1],
+                np.shape(contracted)[2],
+            )
+            u, s, v_dag = np.linalg.svd(reshaped_vec, full_matrices=False)
+            tensors[site] = u.reshape(
+                np.shape(contracted)[0],
+                np.shape(contracted)[1],
+                np.shape(u)[1],
+            )
+            if site < num_sites - 1:
+                tensors[site + 1] = np.einsum(
+                    "ij,jkl",
+                    np.matmul(np.diag(s), v_dag),
+                    tensors[site + 1],
+                )
+
+            env[site + 1] = ZipperLeft(env[site], tensors[site].conj().T, H[site], tensors[site])
+
+        if _converged():
+            break
+
+        # Backward sweep
+        for site in range(num_sites - 1, -1, -1):
+            contracted = np.einsum("ijk,jlmn", env[site], H[site], optimize=True)
+            contracted = np.einsum("ijklm,nlo", contracted, env[site + 2], optimize=True)
+            contracted = np.transpose(contracted, (0, 2, 5, 1, 3, 4))
+            hmat = contracted.reshape(
+                np.shape(contracted)[0] * np.shape(contracted)[1] * np.shape(contracted)[2],
+                np.shape(contracted)[3] * np.shape(contracted)[4] * np.shape(contracted)[5],
+            )
+
+            vals, vecs = eigsh(hmat, k=1, which="SA", v0=tensors[site])
+            energy = float(vals[0])
+            _store_energy(energy)
+            if _converged():
+                break
+
+            reshaped_vec = vecs.reshape(
+                np.shape(contracted)[0],
+                np.shape(contracted)[1] * np.shape(contracted)[2],
+            )
+            u, s, v_dag = np.linalg.svd(reshaped_vec, full_matrices=False)
+            tensors[site] = v_dag.reshape(
+                np.shape(v_dag)[0],
+                np.shape(contracted)[1],
+                np.shape(contracted)[2],
+            )
+            if site > 0:
+                tensors[site - 1] = np.einsum(
+                    "ijk,kl",
+                    tensors[site - 1],
+                    np.matmul(u, np.diag(s)),
+                    optimize=True,
+                )
+
+            env[site + 1] = ZipperRight(env[site + 2], tensors[site].conj().T, H[site], tensors[site])
+
+        if _converged():
+            break
+
+    return energy_history, tensors, time_energy
 
 
 
