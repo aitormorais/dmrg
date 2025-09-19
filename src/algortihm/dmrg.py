@@ -217,14 +217,14 @@ def fDMRG_conv_mem(
 @dataclass
 class DmrgOneSite:
     
-    H: List[np.ndarray]                   # MPO como lista de tensores (wL,d,wR,d)
-    D: int                                # bond dimension deseada
-    Nsweeps: int                          # num de barridos
-    mps0: Optional[List[np.ndarray]] = None  # MPS inicial (opcional)
-    epsilon: float = 1e-3                 # criterio de parada
-    seed: Optional[int] = None            # semilla 
+    H: List[np.ndarray]                   # MPO as a list of tensors (wL,d,wR,d)
+    D: int                                # desired bond dimension
+    Nsweeps: int                          # number of sweeps
+    mps0: Optional[List[np.ndarray]] = None  # initial MPS (optional)
+    epsilon: float = 1e-3                 # stopping criterion
+    seed: Optional[int] = None            # seed
 
-    # Salidas / métricas
+    # Outputs / metrics
     energy_history: List[float] = field(default_factory=list, init=False)
     time_energy: List[Tuple[float, float]] = field(default_factory=list, init=False)
     mps_opt: Optional[List[np.ndarray]] = field(default=None, init=False)
@@ -244,7 +244,7 @@ class DmrgOneSite:
         """Ejecuta tu fDMRG_conv_mem y expone (energías, mps, (t,E))."""
         mps_input = self._init_mps_if_needed()
 
-        # Llamada directa a tu implementación (sin cambios)
+        # Direct call to your implementation (unchanged)
         E_list, M, E_time = fDMRG_conv_mem(
             H=self.H,
             D=self.D,
@@ -253,7 +253,7 @@ class DmrgOneSite:
             epsilon=self.epsilon,
         )
 
-        # Guardamos resultados y algunas métricas
+        # Store results and some metrics
         self.energy_history = list(E_list)
         self.time_energy = list(E_time)
         self.mps_opt = M
