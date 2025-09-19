@@ -1,3 +1,6 @@
+import numpy as np
+from typing import List, Tuple
+
 def calculate_cut_value(adj_matrix: np.ndarray, partition: list[int]) -> int:
     """
     Calcula el valor del corte para una partición dada.
