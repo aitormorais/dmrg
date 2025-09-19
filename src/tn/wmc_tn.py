@@ -29,11 +29,11 @@ def transpose_tensors(array_list: List[np.ndarray]) -> List[np.ndarray]:
     Retorna:
     List[np.ndarray]: Lista de arrays transpuestos.
     """
-    # Validar que la entrada es una lista de ndarrays
+    # Validate that the input is a list of ndarrays
     if not all(isinstance(array, np.ndarray) for array in array_list):
         raise ValueError("Todos los elementos de array_list deben ser instancias de np.ndarray")
 
-    # Transponer cada array en la lista segun los ejes especificados
+    # Transpose each array in the list according to the specified axes
     transposed_arrays = [np.transpose(array, (0, 3, 1, 2)) for array in array_list]
 
     return transposed_arrays
@@ -53,7 +53,7 @@ def generar_indices(matriz: np.ndarray, inicio: int = 4) -> List[Tuple[int, int]
 
     for i in range(inicio, filas):
         for j in range(inicio, columnas):
-            if i < j:  # Solo tuplas donde el primer indice sea menor que el segundo
+            if i < j:  # Only tuples where the first index is smaller than the second
                 indices.append((i, j))
 
     return indices
@@ -110,14 +110,14 @@ def extract_bitstring(mps_tensors: List[np.ndarray], threshold: float = 0.1) -> 
     Retorna:
         List[int]: Una lista de 0 y 1 que representa la cadena de bits encontrada.
     """
-    alpha_left = 0  # Comienza desde el borde izquierdo (suponiendo bondDimLeft=1 en el sitio 1)
+    alpha_left = 0  # Start from the left edge (assuming bondDimLeft=1 at site 1)
     bitstring = []
 
     for A in mps_tensors:
         bondL, d, bondR = A.shape
         found = False
 
-        # Busca sobre los posibles estados locales s y el siguiente índice del enlace alpha_right
+        # Search over the possible local states s and the next bond index alpha_right
         for s in range(d):
             for alpha_right in range(bondR):
                 val = A[alpha_left, s, alpha_right]
@@ -134,7 +134,7 @@ def extract_bitstring(mps_tensors: List[np.ndarray], threshold: float = 0.1) -> 
     return bitstring
 
 def calcular_constante(matrix):
-    # Sumamos todos los elementos de la matriz triangular superior, excluyendo la diagonal
+    # Sum all the elements of the upper triangular matrix, excluding the diagonal
     suma = np.sum(np.triu(matrix, k=1))
     return suma / 2
 def crear_mpo(n: int) -> List[np.ndarray]:
@@ -149,12 +149,12 @@ def crear_mpo(n: int) -> List[np.ndarray]:
     """
 
     #is_matrix = len(iden.shape) == 2 and iden.shape[0] == iden.shape[1] and len(z.shape) == 2 and z.shape[0] == z.shape[1]
-    # Inicializar la lista con valores predefinidos en indices especificos
+    # Initialize the list with predefined values at specific indices
     lista = np.zeros(n, dtype=int)
     lista[0], lista[1], lista[2], lista[-1] = 1, 2, n, 1
     lista[3:-1] = np.arange(3,len(lista)-1)[::-1]
 
-    # Crear MPO con dimension ajustada segun el tipo de iden y z
+    # Create an MPO with dimensions adjusted according to the type of iden and z
 
     mpo = [np.zeros((lista[i], lista[i + 1], 2,2)) for i in range(n - 1)]
 
@@ -173,13 +173,13 @@ def crear_mps(n: int) -> List[np.ndarray]:
     """
 
     #is_matrix = len(iden.shape) == 2 and iden.shape[0] == iden.shape[1] and len(z.shape) == 2 and z.shape[0] == z.shape[1]
-    # Inicializar la lista con valores predefinidos en indices especificos
-    #TODO elegir si usar vecotorizado o for
+    # Initialize the list with predefined values at specific indices
+    # TODO choose whether to use vectorized or for loops
     lista = np.zeros(n, dtype=int)
     lista[0], lista[1], lista[2], lista[-1] = 1, 2, n, 1
     lista[3:-1] = np.arange(3,len(lista)-1)[::-1]
 
-    # Crear MPS con dimension ajustada segun el tipo de iden y z
+    # Create an MPS with dimensions adjusted according to the type of iden and z
 
     mpo = [np.zeros((lista[i], lista[i + 1], 2)) for i in range(n - 1)]
 
@@ -236,24 +236,24 @@ def _st_op(lista: List[np.ndarray], matriz: np.ndarray, iden: np.ndarray, z: np.
     Retorno:
     List[np.ndarray]: La lista modificada con cambios en el segundo tensor.
     """
-    limite = len(lista) - 1  # El limite excluye las dos ultimas posiciones reservadas para otros fines
+    limite = len(lista) - 1  # The limit excludes the last two positions reserved for other purposes
     segundo = lista[1]
     segundo[0, 0] = iden
 
-    # Dividimos para reducir el numero de operaciones ;)
+    # Divide to reduce the number of operations ;)
     z_half = z / 2
     iden_half = iden / 2
 
-    # Modificacion del tensor para posiciones intermedias
+    # Modify the tensor for intermediate positions
     for i in range(1, limite):
         indice = i + 2
         segundo[0, i] = z_half * matriz[2, indice]
         segundo[1, i] = iden_half * matriz[1, indice]
 
-    # Ajuste de los valores en las ultimas posiciones del tensor
-    segundo[1, -2] = z_half * matriz[1, 2]  # anteultimo tensor
-    segundo[1, -1] = iden_half * matriz[0, 1]  # ultimo tensor
-    segundo[0, -1] = z_half * matriz[0, 2]  # ultimo tensor
+    # Adjust the values in the last positions of the tensor
+    segundo[1, -2] = z_half * matriz[1, 2]  # penultimate tensor
+    segundo[1, -1] = iden_half * matriz[0, 1]  # last tensor
+    segundo[0, -1] = z_half * matriz[0, 2]  # last tensor
 
     return lista
 
@@ -275,14 +275,14 @@ def _tercer_op(lista: List[np.ndarray], matriz: np.ndarray, iden: np.ndarray, z:
     tercer[0, 0] = iden
     z_medio = z/2
     tercer[0, -1] = z * (matriz[0, 3]) / 2
-    rango = tercer.shape[1] - 1  # Excluye la ultima posicion reservada para finalizar
+    rango = tercer.shape[1] - 1  # Excludes the last position reserved for completion
 
-    # Aplicacion de valores de z en posiciones intermedias del tensor
+    # Apply z values in intermediate positions of the tensor
     for i in range(1, rango):
         tercer[0, i] = z_medio * (matriz[3, i + 3])
-        tercer[i + 1, i] = iden # Aplica identidades para el resto de posiciones
+        tercer[i + 1, i] = iden # Apply identities for the remaining positions
 
-    # Asigna el valor de z para finalizar la configuracion del tensor
+    # Assign the value of z to finalize the tensor configuration
     tercer[1, -1] = z
 
     tercer[-2, -1] = iden
@@ -305,28 +305,28 @@ def _rt_opb(lista: List[np.ndarray], matriz: np.ndarray, iden: np.ndarray, z: np
     Retorno:
     List[np.ndarray]: La lista modificada con cambios en los tensores especificados.
     """
-    # Generar las posiciones para la matriz
+    # Generate the positions for the matrix
     posiciones = generar_indices(matriz)
-    # Optimizadas operaciones z = z/2 evitamos dividir todo el rato...
+    # Optimized operations z = z/2 to avoid dividing all the time...
     z_medio = z/2
     for x in range(3, len(lista) - 1):
-        #print(f"Modificando tensor en la posicion {x}")
+        #print(f"Modifying tensor at position {x}")
         tensor = lista[x]
 
-        # Asignaciones iniciales
+        # Initial assignments
         tensor[0, 0] = iden
         tensor[0, -1] = z_medio * (matriz[0, x + 1])
         rango = tensor.shape[1] - 1
-        # Modificacion de valores intermedios
+        # Modification of intermediate values
         for j in range(1, rango):
             fila , col = posiciones.pop(0)
             tensor[0, j] = z_medio * (matriz[fila, col])
             indice = -(j + 1)
             tensor[indice, indice] = iden
 
-        # Asignaciones finales
+        # Final assignments
         tensor[-1, -1] = iden
-        tensor[1, -1] = z  # Propagar solo el valor de z
+        tensor[1, -1] = z  # Propagate only the value of z
 
     return lista
 
@@ -353,7 +353,7 @@ def gen_mps(matriz: np.ndarray) -> List[np.ndarray]:
     z = np.array([1, -1])
     #iden = np.eye(2)
     #z = np.array([[1, 0],[0,-1]])
-    # Validacion de las condiciones de entrada
+    # Validate the input conditions
     """if n < 9:
         raise ValueError("Minimo necesitaras usar 9 nodos para que esto sea efectivo.")"""
     if matriz.shape[0] != matriz.shape[1]:
@@ -361,7 +361,7 @@ def gen_mps(matriz: np.ndarray) -> List[np.ndarray]:
     if matriz.shape[0] != n:
         raise ValueError("La matriz no coincide con el numero de nodos.")
 
-    # Crear la lista MPS y procesar los tensores
+    # Create the MPS list and process the tensors
     lista = crear_mps(n)
     lista = _primer_tensor(lista, iden, z)
     lista = _st_op(lista, matriz, iden, z)
@@ -393,7 +393,7 @@ def gen_mpo(matriz: np.ndarray) -> List[np.ndarray]:
     #z = np.array([1, -1])
     iden = np.eye(2)
     z = np.array([[1, 0],[0,-1]])
-    # Validacion de las condiciones de entrada
+    # Validate the input conditions
     """if n < 9:
         raise ValueError("Minimo necesitaras usar 9 nodos para que esto sea efectivo.")"""
     if matriz.shape[0] != matriz.shape[1]:
@@ -401,7 +401,7 @@ def gen_mpo(matriz: np.ndarray) -> List[np.ndarray]:
     if matriz.shape[0] != n:
         raise ValueError("La matriz no coincide con el numero de nodos.")
 
-    # Crear la lista MPO y procesar los tensores
+    # Create the MPO list and process the tensors
     lista = crear_mpo(n)
     lista = _primer_tensor(lista, iden, z)
     lista = _st_op(lista, matriz, iden, z)
